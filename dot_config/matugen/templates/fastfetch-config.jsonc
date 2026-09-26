@@ -1,0 +1,175 @@
+{
+    "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+    "logo": {
+        "source": "Omarchy",
+        "type": "builtin",
+        "color": {
+            "1": "{{colors.primary.default.hex}}",
+            "2": "{{colors.primary.default.hex}}"
+        },
+        "padding": {
+            "top": 1,
+            "left": 3,
+            "right": 5
+        }
+    },
+    "display": {
+        "separator": "  ",
+        "color": {
+            "title": "{{colors.on_surface.default.hex}}",
+            "output": "{{colors.on_surface_variant.default.hex}}"
+        }
+    },
+    "modules": [
+        "break",
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m┌──────────────󰋊 Hardware󰋊──────────────┐"
+        },
+        {
+          "type": "host",
+          "key": " PC",
+          "keyColor": "{{colors.primary.default.hex}}"
+        },
+        {
+          "type": "memory",
+          "key": "│ ├󰍛",
+          "keyColor": "{{colors.primary.default.hex}}"
+        },
+        {
+          "type": "disk",
+          "key": "│ ├󰋊",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "format": "{1} / {2} ({3})"
+        },
+        {
+          "type": "cpu",
+          "key": "│ ├󰍙",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "format": "{1}, {3} Cores"
+        },
+        {
+          "type": "gpu",
+          "key": "│ └󰍛",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "format": "{2}, {3}"
+        },
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m└──────────────────────────────────────┘"
+        },
+        "break",
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m┌──────────────󰻠 System󰻠───────────────┐"
+        },
+        {
+          "type": "os",
+          "key": " OS",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "format": "{name}"
+        },
+        {
+          "type": "wm",
+          "key": "│ ├󰉲",
+          "keyColor": "{{colors.primary.default.hex}}"
+        },
+        {
+          "type": "de",
+          "key": "│ ├󰧭",
+          "keyColor": "{{colors.primary.default.hex}}"
+        },
+        {
+          "type": "kernel",
+          "key": "│ └󰣠",
+          "keyColor": "{{colors.primary.default.hex}}"
+        },
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m└──────────────────────────────────────┘"
+        },
+        "break",
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m┌──────────────󰔎 Theme󰔎────────────────┐"
+        },
+        {
+          "type": "shell",
+          "key": " sh",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "format": "{1}"
+        },
+        {
+          "type": "wmtheme",
+          "key": "│ ├󰉼",
+          "keyColor": "{{colors.primary.default.hex}}"
+        },
+        {
+          "type": "terminal",
+          "key": "│ ├󰆍",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "format": "{1}"
+        },
+        {
+          "type": "packages",
+          "key": "│ └󰏖",
+          "keyColor": "{{colors.primary.default.hex}}"
+        },
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m└──────────────────────────────────────┘"
+        },
+        "break",
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m┌──────────────󰚭 Times󰚭───────────────┐"
+        },
+        {
+          "type": "command",
+          "key": "  OS Age ",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "keyWidth": 12,
+          "text": "birth_install=$(stat -c %W /); current=$(date +%s); time_progression=$((current - birth_install)); days_difference=$((time_progression / 86400)); echo $days_difference days"
+        },
+        {
+          "type": "uptime",
+          "key": "  Uptime ",
+          "keyColor": "{{colors.primary.default.hex}}"
+        },
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m└──────────────────────────────────────┘"
+        },
+        "break",
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m┌──────────────󰚭 Music󰚭───────────────┐"
+        },
+        {
+          "type": "command",
+          "key": "  󰎆 Now ",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "keyWidth": 12,
+          "text": "playerctl metadata --format \"$(printf '%s%sartist%s%s - %s%stitle%s%s' '{' '{' '}' '}' '{' '{' '}' '}')\" 2>/dev/null || echo 'Not Playing'"
+        },
+        {
+          "type": "command",
+          "key": "  󰎅 Album ",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "keyWidth": 12,
+          "text": "playerctl metadata --format \"$(printf '%s%salbum%s%s' '{' '{' '}' '}')\" 2>/dev/null || echo '-'"
+        },
+        {
+          "type": "command",
+          "key": "  󰎄 Source ",
+          "keyColor": "{{colors.primary.default.hex}}",
+          "keyWidth": 12,
+          "text": "playerctl --format \"$(printf '%s%splayerName%s%s' '{' '{' '}' '}')\" status 2>/dev/null || echo '-'"
+        },
+        {
+          "type": "custom",
+          "format": "\u001b[38;2;{{colors.primary.default.red}};{{colors.primary.default.green}};{{colors.primary.default.blue}}m└──────────────────────────────────────┘"
+        },
+        "break"
+    ]
+}

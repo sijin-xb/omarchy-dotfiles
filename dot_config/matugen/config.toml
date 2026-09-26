@@ -1,0 +1,124 @@
+[config]
+version_check = false
+
+[templates.m3colors]
+input_path = '~/.config/matugen/templates/colors.json'
+output_path = '~/.local/state/quickshell/user/generated/colors.json'
+# 光标已固定 Bibata-Modern-Ice（见 hyprland.lua / environment.d），不再按 primary 重渲。
+# post_hook = 'nohup "$HOME/.config/hypr/hyprland/scripts/generate_cursor_theme.py" >/dev/null 2>&1 &'
+
+[templates.hyprland]
+input_path = '~/.config/matugen/templates/hyprland/colors.lua'
+output_path = '~/.config/hypr/hyprland/colors.lua'
+# 写完 Hyprland 配色后同步 Omarchy 主题侧：把 M3 调色板翻译成
+# current/theme 的 colors.toml，重生成 shell.toml/hyprland.lua 等模板产物，
+# applyTheme 推给 quickshell（面板/锁屏/菜单），再 hyprctl reload 让
+# general/group 边框立刻跟上。脚本内部失败只写日志，不会中断 matugen。
+post_hook = '$HOME/.local/bin/omarchy-matugen-shell-sync'
+
+[templates.hyprlock]
+input_path = '~/.config/matugen/templates/hyprland/hyprlock-colors.conf'
+output_path = '~/.config/hypr/hyprlock/colors.conf'
+
+[templates.fuzzel]
+input_path = '~/.config/matugen/templates/fuzzel/fuzzel_theme.ini'
+output_path = '~/.config/fuzzel/fuzzel_theme.ini'
+
+[templates.walker]
+# walker 主题的配色部分。布局 xml 不走 matugen（直接放在
+# ~/.config/walker/themes/matugen/，只在升级 walker 后需要同步上游改动）。
+input_path = '~/.config/matugen/templates/walker/style.css'
+output_path = '~/.config/walker/themes/matugen/style.css'
+
+[templates.alacritty]
+input_path = '~/.config/matugen/templates/alacritty/matugen-theme.toml'
+output_path = '~/.config/alacritty/matugen-theme.toml'
+
+[templates.kitty]
+input_path = '~/.config/matugen/templates/kitty/current-theme.conf'
+output_path = '~/.config/kitty/current-theme.conf'
+
+[templates.foot]
+input_path = '~/.config/matugen/templates/foot/foot.ini'
+output_path = '~/.config/foot/matugen.ini'
+
+[templates.btop]
+input_path = '~/.config/matugen/templates/btop.theme'
+output_path = '~/.config/btop/themes/ii-auto.theme'
+# btop 的 SIGUSR2 等价于界面里的 Ctrl+R「重载配置」：会重读 btop.conf 并重设
+# 主题，正在跑的实例立刻换色，不需要重启。没有实例时 pkill 返回 1，忽略即可。
+post_hook = 'pkill -SIGUSR2 -x btop 2>/dev/null || true'
+
+[templates.mako]
+input_path = '~/.config/matugen/templates/mako/colors.conf'
+output_path = '~/.config/mako/colors.conf'
+
+[templates.fastfetch]
+input_path = '~/.config/matugen/templates/fastfetch-config.jsonc'
+output_path = '~/.config/fastfetch/config.jsonc'
+
+[templates.gtk3]
+input_path = '~/.config/matugen/templates/gtk-3.0/gtk.css'
+output_path = '~/.config/gtk-3.0/gtk.css'
+
+[templates.gtk4]
+input_path = '~/.config/matugen/templates/gtk-4.0/gtk.css'
+output_path = '~/.config/gtk-4.0/gtk.css'
+
+[templates.kde_colors]
+input_path = '~/.config/matugen/templates/kde/color.txt'
+output_path = '~/.local/state/quickshell/user/generated/color.txt'
+
+[templates.gtk-folder]
+# 把 Adwaita 文件夹 / 部分 mimetypes 图标按 matugen 主色重新着色。
+# recolor.sh 是模板（含 {{colors.*}} 占位符），matugen 渲染出真实 hex 到
+# 缓存目录后再由 post_hook 执行。生成到 ~/.local/share/icons/Adwaita-Matugen-{A,B}
+# （A/B 交替绕开 GTK/Qt 的图标缓存），并把 gsettings icon-theme 切过去。
+input_path = '~/.config/matugen/templates/gtk-folder/recolor.sh'
+output_path = '~/.local/state/quickshell/user/generated/recolor-folders.sh'
+post_hook = 'nohup bash "$HOME/.local/state/quickshell/user/generated/recolor-folders.sh" >/dev/null 2>&1 &'
+
+[templates.wallpaper]
+input_path = '~/.config/matugen/templates/wallpaper.txt'
+output_path = '~/.local/state/quickshell/user/generated/wallpaper/path.txt'
+
+[templates.niri]
+input_path = '~/.config/matugen/templates/niri-colors.kdl'
+output_path = '~/.config/niri/matugen-colors.kdl'
+
+[templates.cava]
+input_path = '~/.config/matugen/templates/cava-colors.ini'
+output_path = '~/.config/cava/config'
+
+[templates.fcitx5]
+input_path = '~/.config/matugen/templates/fcitx5-theme.conf'
+output_path = '~/.local/share/fcitx5/themes/Matugen/theme.conf'
+# fcitx5 不热重载皮肤（fcitx5-remote -r 只重读配置），所以直接重启它托管
+# 的用户服务，让 Matugen 主题立即生效；服务不在时退回 -r。
+post_hook = 'systemctl --user try-restart omarchy-fcitx5.service >/dev/null 2>&1 || fcitx5-remote -r || true'
+
+[templates.waybar_colors]
+input_path = '~/.config/matugen/templates/colors.css'
+output_path = '~/.config/waybar/colors.css'
+
+[templates.waybar_niri_colors]
+input_path = '~/.config/matugen/templates/colors.css'
+output_path = '~/.config/waybar-niri-Win11Like/colors.css'
+
+[templates.starship]
+input_path = '~/.config/matugen/templates/starship.toml'
+output_path = '~/.config/starship.toml'
+
+[templates.yazi]
+input_path = '~/.config/matugen/templates/yazi-theme.toml'
+output_path = '~/.config/yazi/theme.toml'
+
+[templates.obs]
+input_path = '~/.config/matugen/templates/obs-matugen.obt'
+output_path = '~/.config/obs-studio/themes/matugen.obt'
+
+# VSCode 注入片段。settings.json 是用户自己的配置，不能整体覆盖，
+# 所以这里只生成片段到缓存目录，由 material-code 扩展 / 手动 include 使用。
+[templates.vscode]
+input_path = '~/.config/matugen/templates/vscode-inject.json'
+output_path = '~/.cache/matugen_vscode_inject.json'

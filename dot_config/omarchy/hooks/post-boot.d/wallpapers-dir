@@ -1,0 +1,47 @@
+#!/bin/bash
+# 壁纸读取换成 ~/Pictures/Wallpapers：
+# 1) 把用户壁纸硬链接进官方用户壁纸目录（真实路径，bg next 循环索引才正常；
+#    纯软链会让 find -L 打印逻辑路径、bg set 存 realpath，二者对不上导致永远停在第一张）
+# 2) 主题自带壁纸整个挪走，让切换器/循环只读用户目录
+# 3) 背景链接失效时改指用户目录第一张图
+
+WALLPAPERS_DIR="$HOME/Pictures/Wallpapers"
+THEME_NAME=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
+USER_BG_DIR="$HOME/.config/omarchy/backgrounds/$THEME_NAME"
+THEME_BG_DIR="$HOME/.local/state/omarchy/current/theme/backgrounds"
+CURRENT_BG_LINK="$HOME/.local/state/omarchy/current/background"
+
+[[ -n $THEME_NAME && -d $WALLPAPERS_DIR ]] || exit 0
+
+# 1) 硬链接同步（同盘才可行；-f 覆盖旧链接，重复执行幂等）
+mkdir -p "$USER_BG_DIR"
+find "$WALLPAPERS_DIR" -maxdepth 1 -type f -exec ln -f -t "$USER_BG_DIR" {} + 2>/dev/null
+
+# 2) 主题自带壁纸挪到 .stock（theme set 会整目录重建，随下次换主题自然清掉）
+if [[ -d $THEME_BG_DIR && -n $(ls -A "$THEME_BG_DIR" 2>/dev/null) ]]; then
+  rm -rf "$THEME_BG_DIR.stock"
+  mv "$THEME_BG_DIR" "$THEME_BG_DIR.stock"
+  mkdir -p "$THEME_BG_DIR"
+fi
+
+# 3) 背景链接指向的文件没了才改指，保住用户当前选的壁纸
+if [[ -L $CURRENT_BG_LINK && ! -e $CURRENT_BG_LINK ]]; then
+  first=$(find "$USER_BG_DIR" -maxdepth 1 -type f \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
+    | sort | head -1)
+  [[ -n $first ]] && omarchy-theme-bg-set "$first" || true
+fi
+
+# 4) 换色：走成熟链路 matugen-update.sh（策略状态 → switchwall → matugen 全模板）。
+#    theme set 是调度器直连 bg set（绕过 PATH 包装器）的场景，钩子里补一枪；
+#    壁纸没变时脚本内部秒跳，开机重复执行无害。包装器侧已有同款触发，靠锁串行化。
+bg=$(readlink -f "$CURRENT_BG_LINK" 2>/dev/null)
+if [[ -f $bg && -x $HOME/.config/scripts/matugen-update.sh ]]; then
+  (
+    flock 9 || exit 0
+    "$HOME/.config/scripts/matugen-update.sh" "$bg" \
+      >>"${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/matugen.log" 2>&1
+  ) 9>"${XDG_RUNTIME_DIR:-/tmp}/matugen-walls.lock" &
+fi
+
+exit 0

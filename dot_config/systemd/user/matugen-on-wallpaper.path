@@ -1,0 +1,12 @@
+[Unit]
+Description=Run matugen when Omarchy background symlink changes
+
+[Path]
+# Symlink retarget replaces the inode; PathExistsChanged catches that.
+# Directory watch catches theme-set's ln -nsf without going through PATH wrappers.
+PathExistsChanged=%h/.local/state/omarchy/current/background
+PathChanged=%h/.local/state/omarchy/current
+Unit=matugen-on-wallpaper.service
+
+[Install]
+WantedBy=paths.target

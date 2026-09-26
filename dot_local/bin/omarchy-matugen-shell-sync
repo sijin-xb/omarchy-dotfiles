@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""matugen 调色板 → Omarchy 主题文件同步 + 热重载。
+
+挂在 ~/.config/matugen/config.toml 的 [templates.hyprland] post_hook：
+1. 把 matugen 生成的 M3 colors.json 翻译成 Omarchy 的 colors.toml；
+2. 用 omarchy-theme-set-templates 重新生成主题模板产物（shell.toml /
+   hyprland.lua / gum_env.lua 等）并写回 current/theme；
+3. applyTheme 推给 quickshell shell（面板/锁屏/菜单），hyprctl reload 让
+   Hyprland 边框（含 group）跟着壁纸走；
+4. 顺带刷新正在运行的 foot/tmux/GTK 明暗态等消费者。
+
+任一步失败只写日志、返回 0，不打断 matugen 其余模板。
+"""
+
+import base64
+import colorsys
+import fcntl
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path.home()
+OMARCHY_PATH = os.environ.get("OMARCHY_PATH") or "/usr/share/omarchy"
+CURRENT_THEME = HOME / ".local/state/omarchy/current/theme"
+NEXT_THEME = HOME / ".local/state/omarchy/current/next-theme"
+COLORS_JSON = HOME / ".local/state/quickshell/user/generated/colors.json"
+MODE_FILE = HOME / ".cache/matugen-strategy/mode"
+TPL_DIR = Path(OMARCHY_PATH) / "default/themed"
+LOG_FILE = HOME / ".cache/omarchy/matugen.log"
+LOCK_FILE = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "omarchy-theme-set.lock"
+
+# 主题色没有的语义色（M3 调色板只有 primary 一族 + error）按主色色相补。
+# 12 点方向为 0，黄/绿/青/蓝/品红分别偏移 60/120/180/240/300 度。
+HUE_OFFSETS = {"yellow": 60, "orange": 30, "green": 120, "cyan": 180, "blue": 240, "magenta": 300}
+SEMANTIC_SAT = 0.62
+SEMANTIC_LIT = 0.70
+
+def log(msg: str) -> None:
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with LOG_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(f"[shell-sync] {msg}\n")
+    except OSError:
+        pass
+
+
+def run(cmd: list[str], timeout: int = 60) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def hex_to_rgb(value: str) -> tuple[float, float, float]:
+    v = value.lstrip("#")
+    return tuple(int(v[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+def rgb_to_hex(rgb: tuple[float, float, float]) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*(max(0, min(255, round(c))) for c in rgb))
+
+
+def mix(a: str, b: str, amount: float) -> str:
+    ra, ga, ba = hex_to_rgb(a)
+    rb, gb, bb = hex_to_rgb(b)
+    return rgb_to_hex(
+        (ra + (rb - ra) * amount, ga + (gb - ga) * amount, ba + (bb - ba) * amount)
+    )
+
+
+def relative_luminance(bg: str) -> float:
+    r, g, b = (c / 255 for c in hex_to_rgb(bg))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def pick(m3: dict, key: str, fallback: str) -> str:
+    value = m3.get(key)
+    return value if isinstance(value, str) and value.startswith("#") else fallback
+
+
+def build_colors_toml(m3: dict) -> str:
+    background = pick(m3, "background", "#141414")
+    foreground = pick(m3, "on_background", "#e8e8e8")
+    primary = pick(m3, "primary", foreground)
+
+    if MODE_FILE.is_file():
+        mode = MODE_FILE.read_text(encoding="utf-8").strip() or "dark"
+    else:
+        mode = "dark" if relative_luminance(background) < 0.5 else "light"
+
+    light_fg = mix(foreground, "#ffffff", 0.15)
+    bright_fg = mix(foreground, "#ffffff", 0.35)
+
+    hue, _, _ = colorsys.rgb_to_hls(*(c / 255 for c in hex_to_rgb(primary)))
+
+    def hue_color(offset_deg: int, sat: float = SEMANTIC_SAT, lit: float = SEMANTIC_LIT) -> str:
+        r, g, b = colorsys.hls_to_rgb((hue + offset_deg / 360) % 1.0, lit, sat)
+        return rgb_to_hex((r * 255, g * 255, b * 255))
+
+    colors = {
+        "accent": primary,
+        "selection": pick(m3, "surface_container_high", mix(background, foreground, 0.15)),
+        "muted": pick(m3, "outline_variant", mix(background, foreground, 0.30)),
+        "background": background,
+        "dark_background": pick(m3, "surface_container_low", mix(background, foreground, 0.06)),
+        "darker_background": pick(m3, "surface_container_lowest", mix(background, "#000000", 0.35)),
+        "lighter_background": pick(m3, "surface_container_high", mix(background, foreground, 0.15)),
+        "foreground": foreground,
+        "dark_foreground": pick(m3, "outline", mix(foreground, background, 0.45)),
+        "light_foreground": light_fg,
+        "bright_foreground": bright_fg,
+        "red": pick(m3, "error", hue_color(0)),
+        "yellow": hue_color(HUE_OFFSETS["yellow"]),
+        "orange": hue_color(HUE_OFFSETS["orange"]),
+        "green": hue_color(HUE_OFFSETS["green"]),
+        "cyan": hue_color(HUE_OFFSETS["cyan"]),
+        "blue": hue_color(HUE_OFFSETS["blue"]),
+        "magenta": hue_color(HUE_OFFSETS["magenta"]),
+        "brown": mix(hue_color(HUE_OFFSETS["orange"]), background, 0.5),
+    }
+    for name in ("red", "yellow", "green", "cyan", "blue", "magenta"):
+        colors[f"bright_{name}"] = mix(colors[name], bright_fg, 0.3)
+
+    lines = [f'mode = "{mode}"', ""]
+    lines += [f'{key} = "{colors[key]}"' for key in colors]
+    return "\n".join(lines) + "\n"
+
+
+def acquire_lock():
+    """与 omarchy theme set 共用一把锁；拿不到就放弃本次同步，避免卡死换壁纸链路。"""
+    deadline = time.monotonic() + 10
+    fh = LOCK_FILE.open("a+")
+    while True:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fh
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                fh.close()
+                raise TimeoutError(f"theme-set lock busy: {LOCK_FILE}")
+            time.sleep(0.2)
+
+
+def apply_theme() -> None:
+    if subprocess.run(["pgrep", "-x", "quickshell"], capture_output=True).returncode != 0:
+        log("quickshell 未运行，跳过 applyTheme")
+        return
+    colors_b64 = base64.b64encode((CURRENT_THEME / "colors.toml").read_bytes())
+    shell_b64 = base64.b64encode((CURRENT_THEME / "shell.toml").read_bytes())
+    proc = subprocess.run(
+        ["timeout", "3", "omarchy-shell", "shell", "applyTheme", colors_b64, shell_b64],
+        capture_output=True,
+        timeout=10,
+    )
+    if proc.returncode != 0:
+        log(f"applyTheme 失败 rc={proc.returncode}")
+
+
+def matugen_icon_theme() -> str:
+    """Prefer the live Adwaita-Matugen-{A,B} flip; fall back to B."""
+    icons = HOME / ".local/share/icons"
+    for name in ("Adwaita-Matugen-B", "Adwaita-Matugen-A"):
+        if (icons / name).is_dir():
+            return name
+    return "Adwaita-Matugen-B"
+
+
+def prefer_md3_gtk(mode: str) -> None:
+    """Omarchy gnome setter wants Adwaita/Yaru; pin MD3 adw-gtk3 + matugen icons."""
+    gtk_theme = "adw-gtk3-dark" if mode != "light" else "adw-gtk3"
+    icon_theme = matugen_icon_theme()
+    for key, value in (
+        ("gtk-theme", gtk_theme),
+        ("icon-theme", icon_theme),
+    ):
+        subprocess.run(
+            ["gsettings", "set", "org.gnome.desktop.interface", key, value],
+            capture_output=True,
+            timeout=10,
+        )
+    try:
+        (CURRENT_THEME / "icons.theme").write_text(icon_theme + "\n", encoding="utf-8")
+    except OSError as exc:
+        log(f"写 icons.theme 失败：{exc}")
+
+
+def refresh_running_apps(mode: str) -> None:
+    # 运行中的应用各自刷新配色；detached，不阻塞 matugen 链路。
+    # gnome setter 之后立刻钉回 MD3，避免 Yaru/Adwaita 盖掉 matugen 图标与 adw-gtk3。
+    refreshers = [
+        "omarchy-theme-set-foot",
+        "omarchy-theme-set-tmux",
+        "omarchy-theme-set-gnome",
+        "omarchy-theme-set-keyboard",
+        "omarchy-theme-set-browser",
+    ]
+    cmdline = "; ".join(f"{name} >/dev/null 2>&1 || true" for name in refreshers)
+    subprocess.Popen(
+        ["/bin/sh", "-c", cmdline],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    # 稍等 gnome setter，再钉 MD3（recolor.sh 异步也可能稍后翻 A/B）
+    subprocess.Popen(
+        [
+            "/bin/sh",
+            "-c",
+            (
+                f"sleep 0.8; "
+                f"gsettings set org.gnome.desktop.interface gtk-theme "
+                f"'{'adw-gtk3-dark' if mode != 'light' else 'adw-gtk3'}'; "
+                f"icon=$(ls -d {HOME}/.local/share/icons/Adwaita-Matugen-{{B,A}} "
+                f"2>/dev/null | head -1); "
+                f"[ -n \"$icon\" ] && gsettings set org.gnome.desktop.interface "
+                f"icon-theme \"$(basename \"$icon\")\""
+            ),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def main() -> int:
+    if not COLORS_JSON.is_file():
+        log(f"缺少 {COLORS_JSON}，跳过")
+        return 0
+    if not TPL_DIR.is_dir():
+        log(f"缺少模板目录 {TPL_DIR}，跳过")
+        return 0
+
+    try:
+        m3 = json.loads(COLORS_JSON.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        log(f"colors.json 解析失败：{exc}")
+        return 0
+
+    try:
+        lock = acquire_lock()
+    except (OSError, TimeoutError) as exc:
+        log(f"拿不到主题锁，跳过：{exc}")
+        return 0
+
+    try:
+        # staging：只放新 colors.toml，模板产物由 set-templates 重新渲染，
+        # 主题自带的静态文件（背景/预览/icons.theme 等）原样留在 current/theme。
+        shutil.rmtree(NEXT_THEME, ignore_errors=True)
+        NEXT_THEME.mkdir(parents=True)
+        (NEXT_THEME / "colors.toml").write_text(build_colors_toml(m3), encoding="utf-8")
+
+        env = dict(os.environ, OMARCHY_PATH=OMARCHY_PATH)
+        proc = subprocess.run(
+            ["omarchy-theme-set-templates"], env=env, capture_output=True, text=True, timeout=90
+        )
+        if proc.returncode != 0:
+            log(f"set-templates 失败 rc={proc.returncode}: {proc.stderr.strip()[:300]}")
+            return 0
+
+        shell_toml = NEXT_THEME / "shell.toml"
+        hyprland_lua = NEXT_THEME / "hyprland.lua"
+        if not shell_toml.is_file() or not hyprland_lua.is_file():
+            log("模板产物不完整（shell.toml/hyprland.lua 缺失），保持 current/theme 不变")
+            return 0
+        # 渲染不完整时占位符会原样留下，绝不能覆盖 current/theme。
+        leftovers = [p.name for p in NEXT_THEME.iterdir() if "{{" in p.read_text("utf-8", "ignore")]
+        if leftovers:
+            log(f"模板渲染残留占位符：{leftovers}，保持 current/theme 不变")
+            return 0
+
+        for item in NEXT_THEME.iterdir():
+            shutil.copy2(item, CURRENT_THEME / item.name)
+
+        mode = "dark"
+        if MODE_FILE.is_file():
+            mode = MODE_FILE.read_text(encoding="utf-8").strip() or "dark"
+        prefer_md3_gtk(mode)
+
+        log(f"已更新主题文件：{', '.join(sorted(p.name for p in NEXT_THEME.iterdir()))}")
+
+        apply_theme()
+        if subprocess.run(["pgrep", "-x", "Hyprland"], capture_output=True).returncode == 0:
+            run(["hyprctl", "reload"], timeout=10)
+        refresh_running_apps(mode)
+        return 0
+    except subprocess.TimeoutExpired as exc:
+        log(f"子进程超时：{exc}")
+        return 0
+    except Exception as exc:  # noqa: BLE001 - hook 绝不能让 matugen 链路失败
+        log(f"同步失败：{exc!r}")
+        return 0
+    finally:
+        shutil.rmtree(NEXT_THEME, ignore_errors=True)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        lock.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,8 @@
+[Unit]
+Description=Matugen MD3 recolor from current Omarchy wallpaper
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/scripts/matugen-on-wallpaper.sh
+Nice=10

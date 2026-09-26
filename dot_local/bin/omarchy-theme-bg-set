@@ -1,0 +1,31 @@
+#!/bin/bash
+# 换壁纸后触发 matugen 动态取色（PATH shadow omarchy-theme-bg-set）
+# quickshell 选图器、bg next、钩子都按裸名调这个命令，走 PATH 命中本脚本；
+# `omarchy theme bg set` 由调度器硬编码路径直连真实现，不经过这里。
+
+REAL=/usr/share/omarchy/bin/omarchy-theme-bg-set
+
+"$REAL" "$@"
+rc=$?
+
+if (( rc == 0 )); then
+  bg=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null)
+  if [[ -f $bg ]]; then
+    log_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy"
+    mkdir -p "$log_dir"
+    (
+      # 阻塞排队：连着换壁纸时序列化执行，各自取当时那张图，最后一张定色
+      flock 9 || exit 0
+      updater="$HOME/.config/scripts/matugen-update.sh"
+      if [[ -x $updater ]]; then
+        # 成熟链路：策略状态 → switchwall --image --noswitch → matugen 全模板
+        "$updater" "$bg" >>"$log_dir/matugen.log" 2>&1 \
+          || matugen image "$bg" >>"$log_dir/matugen.log" 2>&1
+      else
+        matugen image "$bg" >>"$log_dir/matugen.log" 2>&1
+      fi
+    ) 9>"${XDG_RUNTIME_DIR:-/tmp}/matugen-walls.lock" &
+  fi
+fi
+
+exit $rc

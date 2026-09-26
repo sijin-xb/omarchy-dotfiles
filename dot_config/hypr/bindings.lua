@@ -132,6 +132,9 @@ o.bind("SUPER + SHIFT + X", "OCR", "omarchy-capture-text")
 
 o.bind("SUPER + SHIFT + R", "Screenrecording", "omarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord", { locked = true })
 
+-- Ctrl+Alt+R: 高质量扬声器录屏（系统声音，very_high / 60fps / CFR / 硬件编码），再按一次停止
+o.bind("CTRL + ALT + R", "Record with system audio (HQ)", "$HOME/.local/bin/record-speaker-hq")
+
 o.bind("SHIFT + PRINT", "Screenshot region", "omarchy-capture-screenshot region", { locked = true })
 o.bind("CTRL + PRINT", "Screenshot fullscreen", "omarchy-capture-screenshot fullscreen", { locked = true })
 o.bind("SUPER + F12", "Screenshot region", "omarchy-capture-screenshot region")
